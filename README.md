@@ -27,6 +27,7 @@ pip install -r requirements.txt
 3. Создайте файл `.env` в корневой директории и добавьте необходимые переменные окружения:
 ```env
 TOKEN=your_bot_token
+DB_LITE=sqlite+aiosqlite:///your_db_name.db
 ```
 
 ## Структура проекта
