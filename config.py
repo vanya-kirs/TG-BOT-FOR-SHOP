@@ -1,16 +1,16 @@
 # ID администраторов
 ADMIN_IDS = [
-    1000271320,  # ID из handlers/user_private.py
+    your_admin_tg_id,  
 ]
 
 # ID каналов и групп
-CHANNEL_ID = -1002294855152  # ID из handlers/make_post.py
-SHOP_CHANNEL = "@owlreal_shop"  # Канал магазина
-SHOP_CHANNEL_LINK = "https://t.me/owlreal_shop"  # Ссылка на канал магазина
-FEEDBACK_CHANNEL = "@owlreal_feedback"  # Канал отзывов
-FEEDBACK_CHANNEL_LINK = "https://t.me/owlreal_feedback"  # Ссылка на канал отзывов
+CHANNEL_ID = your_channel_id  
+SHOP_CHANNEL = "@....."  # Канал магазина
+SHOP_CHANNEL_LINK = "https://t.me/...."  # Ссылка на канал магазина
+FEEDBACK_CHANNEL = "@..."  # Канал отзывов
+FEEDBACK_CHANNEL_LINK = "https://t.me/..."  # Ссылка на канал отзывов
 
 # Контакты
-ADMIN_USERNAME = "@twbsk"
-SUPPORT_USERNAME = "@owlreal_bot"
-COOPERATION_USERNAME = "@M1LASHKA12"  # Контакт для сотрудничества 
+ADMIN_USERNAME = "@..."
+SUPPORT_USERNAME = "@..."   # Название бота
+COOPERATION_USERNAME = "@..."  # Контакт для сотрудничества 
