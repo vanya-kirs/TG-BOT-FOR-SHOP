@@ -15,7 +15,7 @@ Telegram бот для магазина китайских товаров Owlrea
 
 1. Клонируйте репозиторий:
 ```bash
-git clone https://github.com/yourusername/owlreal_bot.git
+git clone https://github.com/Milashka2007/owlreal_bot.git
 cd owlreal_bot
 ```
 
