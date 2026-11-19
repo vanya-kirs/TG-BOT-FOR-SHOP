@@ -1,0 +1,28 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomBytes} from 'node:crypto';
+import {getMigrations} from 'better-auth/db/migration';
+import {createIdentity} from '../server/auth.mjs';
+test('email changes require authenticated user and code for that user and new address',async t=>{
+ const letters=[];const id=createIdentity({APP_URL:'http://localhost:4173',BETTER_AUTH_SECRET:randomBytes(48).toString('hex'),DATABASE_PATH:':memory:'},{sendMail:async m=>letters.push(m),authOptions:{rateLimit:{enabled:false}}});
+ t.after(()=>id.database.close());await (await getMigrations(id.options)).runMigrations();
+ const call=(path,body,cookie='')=>id.auth.handler(new Request('http://localhost:4173/api/auth/'+path,{method:'POST',headers:{Origin:'http://localhost:4173','Content-Type':'application/json',Cookie:cookie},body:JSON.stringify((path.endsWith('sign-up/email')||path.endsWith('sign-in/social'))?{...body,acceptPersonalData:true,consentVersion:'2026-11-19-v1'}:body)}));
+ const register=async email=>{await call('sign-up/email',{name:'Anna',email,password:'password1'});await call('email-otp/send-verification-otp',{email,type:'email-verification'});const r=await call('email-otp/verify-email',{email,otp:letters.at(-1).text.match(/\b\d{6}\b/)[0]});return r.headers.getSetCookie().map(x=>x.split(';')[0]).join('; ');};
+ const cookie=await register('old@example.com'),other=await register('other@example.com');
+ assert.equal((await call('email-otp/request-email-change',{newEmail:'new@example.com'})).status,401);
+ assert.equal((await call('update-user',{name:'Анна'},cookie)).status,200);
+ assert.equal((await call('update-user',{gender:'female'},cookie)).status,400);
+ assert.equal((await call('update-user',{birthday:'1995-07-12'},cookie)).status,400);
+ assert.equal((await call('sign-up/email',{name:'New',email:'third@example.com',password:'password1',birthday:'1995-07-12'})).status,400);
+ const columns=id.database.prepare('PRAGMA table_info(user)').all().map(c=>c.name);
+ assert.equal(columns.includes('birthday'),false);assert.equal(columns.includes('gender'),false);
+ assert.equal((await call('email-otp/request-email-change',{newEmail:'new@example.com'},cookie)).status,200);
+ const otp=letters.at(-1).text.match(/\b\d{6}\b/)[0];
+ assert.equal((await call('email-otp/request-email-change',{newEmail:'new@example.com'},cookie)).status,429);
+ assert.ok(id.database.prepare('SELECT id FROM user WHERE email=?').get('old@example.com'));
+ assert.equal((await call('email-otp/change-email',{newEmail:'new@example.com',otp},other)).status,400);
+ assert.equal((await call('email-otp/change-email',{newEmail:'different@example.com',otp},cookie)).status,400);
+ assert.equal((await call('email-otp/change-email',{newEmail:'new@example.com',otp},cookie)).status,200);
+ assert.ok(id.database.prepare('SELECT id FROM user WHERE email=?').get('new@example.com'));
+ assert.equal(id.database.prepare('SELECT id FROM user WHERE email=?').get('old@example.com'),undefined);
+});

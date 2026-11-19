@@ -1,0 +1,11 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {seed,readState,persist} from '../dist/store.js';
+import {accountData,updateProfile,saveAddress,removeAddress,primaryAddress} from '../dist/account.js';
+test('address stores house and delivery details without postcode',()=>{const s=seed();saveAddress(s,{city:'Тест',street:'Улица',house:'12А',building:'2',entrance:'3',floor:'-1',apartment:'8',postcode:'123456'});const a=accountData(s).addresses[0];assert.equal(a.house,'12А');assert.equal(a.building,'2');assert.equal(a.entrance,'3');assert.equal(a.floor,'-1');assert.equal(a.apartment,'8');assert.equal(a.postcode,undefined);});
+test('existing customer data survives reload',()=>{const s=seed();updateProfile(s,{name:'Анна',email:'anna@example.com',phone:''});let json;persist(s,{setItem:(k,v)=>json=v});assert.equal(accountData(readState({getItem:()=>json})).name,'Анна');});
+test('invalid profile is rejected without partial updates',()=>{const s=seed();updateProfile(s,{name:'Анна'});assert.throws(()=>updateProfile(s,{name:'Другое имя',email:'broken'}));assert.equal(accountData(s).name,'Анна');});
+test('addresses maintain a single default through edit and delete',()=>{const s=seed();saveAddress(s,{city:'Тест',street:'Тестовая',house:'1'});saveAddress(s,{city:'Тест 2',street:'Тестовая',house:'2'});const [a,b]=accountData(s).addresses;primaryAddress(s,b.id);saveAddress(s,{city:'Новый город',street:'Тестовая',house:'3'},b.id);assert.equal(accountData(s).addresses.filter(a=>a.primary).length,1);removeAddress(s,b.id);assert.equal(accountData(s).addresses[0].id,a.id);assert.equal(accountData(s).addresses[0].primary,true);});
+test('invalid address does not modify address book',()=>{const s=seed();assert.throws(()=>saveAddress(s,{city:'',street:'Дом'}));assert.throws(()=>saveAddress(s,{city:'Тест',street:'Тестовая',house:''}));assert.equal(accountData(s).addresses.length,0);});
+
+test('profile discards retired fields and ignores resubmission',()=>{const s=seed();s.customer={name:'Анна',birthday:'1995-07-12',gender:'female',addresses:[]};updateProfile(s,{name:'Анна',birthday:'1990-01-01',gender:'male'});assert.equal('birthday' in s.customer,false);assert.equal('gender' in s.customer,false);});

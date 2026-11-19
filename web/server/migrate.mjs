@@ -1,0 +1,10 @@
+import {migrateCommerce} from './commerce.mjs';
+import {migrateInvitations} from './invitations.mjs';
+import {getMigrations} from 'better-auth/db/migration';
+import {createIdentity} from './auth.mjs';
+import {migrateBrands} from './brands.mjs';
+const identity=createIdentity();
+await (await getMigrations(identity.options)).runMigrations();
+migrateBrands(identity.database);migrateCommerce(identity.database);migrateInvitations(identity.database);
+identity.database.close();
+console.log('Account database is ready.');

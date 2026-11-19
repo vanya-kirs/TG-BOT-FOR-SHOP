@@ -1,0 +1,14 @@
+// Real lifecycle stages; provider does not supply a percentage.
+export function createPhotoProgress(host,{original=false}={}){
+ host.insertAdjacentHTML('beforeend',`<section class="photo-progress" data-photo-progress hidden aria-label="Обработка фотографии"><div class="photo-progress-preview"><img alt="Исходное фото для обработки"><span class="photo-progress-scan" aria-hidden="true"></span></div><div class="photo-progress-info"><strong data-progress-title role="status" aria-live="polite"></strong><p data-progress-detail></p><progress aria-label="Генерация фотографии"></progress><span class="small muted" data-progress-time></span><ol class="photo-progress-steps"><li data-step="sending">Отправка фото</li><li data-step="processing">Генерация</li><li data-step="finishing">Подготовка результата</li></ol></div></section>`);
+ const box=host.querySelector('[data-photo-progress]'),title=box.querySelector('[data-progress-title]'),detail=box.querySelector('[data-progress-detail]'),time=box.querySelector('[data-progress-time]');let timer=null,started=0;
+ const stop=()=>{clearInterval(timer);timer=null;};
+ const tick=()=>{if(!box.isConnected){stop();return;}time.textContent=`Прошло ${Math.floor((Date.now()-started)/1000)} сек.`;};
+ const states={sending:['Отправляем фото','Передаём исходник в сервис обработки.'],starting:['Подготавливаем генерацию','Сервис принял задание.'],in_queue:['Фото в очереди','Ждём свободного места в сервисе. Повторный запуск не нужен.'],processing:['Создаём изображение','Обработка может занять несколько минут. Можно вернуться к черновику позже.'],finishing:['Подготавливаем результат','Сжимаем фото для галереи.'],completed:['Фото готово','Проверьте результат ниже перед применением.'],failed:['Не удалось обработать фото',''],paused:['Проверка приостановлена','Задание могло продолжить работу. Проверьте его состояние кнопкой ниже.']};
+ if(original){states.sending=['Сохраняем оригинал','Передаём файл в хранилище магазина без обработки.'];states.processing=['Сохраняем оригинал','Файл сохраняется без перерисовки.'];box.querySelector('.photo-progress-steps').hidden=true;}
+ return {
+  start(src){stop();started=Date.now();box.hidden=false;box.querySelector('img').src=src;tick();timer=setInterval(tick,1000);this.update('sending');},
+  update(stage,message){const value=states[stage]||states.processing;box.hidden=false;box.dataset.stage=stage;title.textContent=value[0];detail.textContent=message||value[1];const done=['completed','failed','paused'].includes(stage);box.setAttribute('aria-busy',String(!done));box.querySelector('progress').hidden=done;const index={sending:0,starting:1,in_queue:1,processing:1,finishing:2,completed:3}[stage]??-1;box.querySelectorAll('[data-step]').forEach((el,i)=>{el.classList.toggle('is-done',i<index);el.classList.toggle('is-current',i===index);});if(done)stop();},
+  stop
+ };
+}

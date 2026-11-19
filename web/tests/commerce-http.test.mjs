@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomBytes} from 'node:crypto';
+import {getMigrations} from 'better-auth/db/migration';
+import {createIdentity} from '../server/auth.mjs';
+import {createApp} from '../server/app.mjs';
+import {migrateBrands} from '../server/brands.mjs';
+test('HTTP commerce rejects forged roles and foreign origins; invitations are mailed and consumed by the intended account',async t=>{
+ const mails=[];const identity=createIdentity({APP_URL:'http://localhost:4173',BETTER_AUTH_SECRET:randomBytes(48).toString('hex'),DATABASE_PATH:':memory:'},{sendMail:async mail=>mails.push(mail)});await(await getMigrations(identity.options)).runMigrations();migrateBrands(identity.database);
+ const server=createApp(identity).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(async()=>{await new Promise(r=>server.close(r));identity.database.close();});const base='http://127.0.0.1:'+server.address().port;
+ const request=(path,body,cookie='',method=body===undefined?'GET':'POST',origin='http://localhost:4173')=>fetch(base+path,{method,headers:{cookie,Origin:origin,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify((path.endsWith('sign-up/email')||path.endsWith('sign-in/social'))?{...body,acceptPersonalData:true,consentVersion:'2026-11-19-v1'}:body)})});
+ async function login(name){const body={name,email:name+'@example.com',password:'Test-password-42'};const signup=await request('/api/auth/sign-up/email',body);assert.equal(signup.status,200);identity.database.prepare('UPDATE user SET emailVerified=1 WHERE email=?').run(body.email);const response=await request('/api/auth/sign-in/email',body);assert.equal(response.status,200);return response.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ');}
+ const owner=await login('owner'),partner=await login('partner');
+ assert.equal((await request('/api/commerce/product',{})).status,401);
+ assert.equal((await request('/api/invitations',undefined,partner)).status,403);
+ assert.equal((await request('/api/commerce/supplier',{name:'Forged',role:'admin'},partner)).status,400);
+ identity.database.prepare("UPDATE user SET role='admin' WHERE email='owner@example.com'").run();
+ assert.equal((await request('/api/commerce/supplier',{name:'Forbidden'},owner,'POST','https://other.example')).status,403);
+ const created=await request('/api/commerce/supplier',{name:'Партнёр',email:'partner@example.com'},owner);assert.equal(created.status,200);const supplier=(await created.json()).result;
+ assert.equal((await request('/api/invitations',{supplierId:supplier.id,email:'partner@example.com'},owner)).status,201);
+ const mail=mails.find(x=>x.subject.includes('приглашение'));assert.ok(mail);const token=mail.text.match(/\/invite\/([a-f0-9]{64})/)[1];assert.equal((await request('/api/invitations/accept',{token},partner)).status,200);
+ assert.equal((await request('/api/me',undefined,partner)).status,401);
+ const response=await request('/api/auth/sign-in/email',{email:'partner@example.com',password:'Test-password-42'});const cookie=response.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ');const me=await(await request('/api/me',undefined,cookie)).json();assert.equal(me.user.role,'supplier');assert.equal(me.user.supplierId,supplier.id);
+ assert.equal((await request('/api/invitations/accept',{token},cookie)).status,400);
+ assert.equal((await request('/api/commerce/payout',{supplier:supplier.id,amount:1},cookie)).status,400);
+ assert.equal((await request('/api/invitations',undefined,cookie)).status,403);
+ assert.equal((await(await request('/api/commerce',undefined,cookie)).json()).suppliers.length,1);
+ assert.equal((await(await request('/api/commerce')).json()).suppliers.length,0);
+ assert.equal((await request('/api/commerce/supplier-delete',{id:supplier.id},owner)).status,200);
+ assert.equal((await request('/api/me',undefined,cookie)).status,401);
+ assert.equal(identity.database.prepare("SELECT role FROM user WHERE email='partner@example.com'").get().role,'customer');
+});

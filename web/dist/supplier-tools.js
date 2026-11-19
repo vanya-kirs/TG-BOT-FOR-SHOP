@@ -1,0 +1,2 @@
+export function supplierEmail(value){const email=String(value||'').trim().toLowerCase();if(email.length>150||!/^\S+@\S+\.\S+$/.test(email))throw Error('Укажите email поставщика.');return email;}
+export function archiveSupplier(state,id){const supplier=state.suppliers.find(x=>x.id===id);if(!supplier)throw Error('Поставщик не найден.');if(supplier.deletedAt)return supplier;const now=new Date().toISOString();supplier.deletedAt=now;for(const product of state.products.filter(x=>x.supplier===id)){product.archivedAt=now;product.approval='archived';}return supplier;}

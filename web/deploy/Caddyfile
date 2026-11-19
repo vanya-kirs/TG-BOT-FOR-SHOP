@@ -1,0 +1,6 @@
+shop.example.com {
+    encode zstd gzip
+    reverse_proxy app:4173 {
+        header_up X-Forwarded-For {remote_host}
+    }
+}
