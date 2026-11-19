@@ -1,0 +1,22 @@
+import {image} from './photo-fixture.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {migratePhotos} from '../server/photo-records.mjs';
+import {draftStore} from '../server/photo-drafts.mjs';
+import {createPhotoService} from '../server/photo-studio.mjs';
+test('draft keeps form fields, sources and every reserved version across service recreation',async t=>{
+ const db=new DatabaseSync(':memory:');migratePhotos(db);t.after(()=>db.close());const user={id:'u',role:'supplier'},store=draftStore(db);
+ const {id}=store.save(user,null,{fields:{name:'Пальто',sizes:['M']},sources:{front:'data:image/png;base64,YQ=='},selected:{}});
+ const reread=draftStore(db).read(user,id);assert.equal(reread.fields.name,'Пальто');assert.deepEqual(reread.fields.sizes,['M']);
+ assert.throws(()=>store.read({id:'other'},id),/не найден/);assert.throws(()=>store.save({id:'other'},id,{}),/не найден/);
+ let release;const gate=new Promise(r=>release=r);let runs=0;
+ const service=createPhotoService(db,{FASHN_API_KEY:'test',APP_URL:'https://shop.example',PHOTO_MODEL_FRONT:'https://example.com/f.png',PHOTO_MODEL_BACK:'https://example.com/b.png'},async()=>{runs++;await gate;return Response.json({id:'p'+runs});});
+ const tasks=['cover','front','back'].map(kind=>service.start(user,{kind,image,draftId:id}));
+ for(let i=0;i<100&&runs<3;i++)await new Promise(r=>setTimeout(r,10));
+ assert.equal(runs,3,'all three provider calls begin before any finishes');assert.equal(store.read(user,id).jobs.length,3,'reservations survive lost POST response');
+ release();await Promise.all(tasks);assert.deepEqual(store.read(user,id).jobs.map(j=>j.kind).sort(),['back','cover','front']);
+ store.save(user,id,{fields:{name:'Изменено'},selected:{front:store.read(user,id).jobs.find(j=>j.kind==='front').id}});
+ assert.equal(store.read(user,id).jobs.length,3);assert.equal(store.list(user)[0].name,'Изменено');
+ store.remove({id:'other'},id);assert.equal(store.list(user).length,1);store.remove(user,id);assert.equal(store.list(user).length,0);
+});

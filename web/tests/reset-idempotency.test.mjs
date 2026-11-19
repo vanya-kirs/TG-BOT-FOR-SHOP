@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomBytes} from 'node:crypto';
+import {getMigrations} from 'better-auth/db/migration';
+import {createIdentity} from '../server/auth.mjs';
+test('parallel reset requests deliver one email and create one token per minute',async t=>{
+ const letters=[];
+ const id=createIdentity({APP_URL:'http://localhost:4173',BETTER_AUTH_SECRET:randomBytes(48).toString('hex'),DATABASE_PATH:':memory:'},{sendMail:async mail=>letters.push(mail),authOptions:{rateLimit:{enabled:false}}});
+ t.after(()=>id.database.close());await (await getMigrations(id.options)).runMigrations();
+ const call=(path,body)=>id.auth.handler(new Request('http://localhost:4173/api/auth/'+path,{method:'POST',headers:{Origin:'http://localhost:4173','Content-Type':'application/json'},body:JSON.stringify((path.endsWith('sign-up/email')||path.endsWith('sign-in/social'))?{...body,acceptPersonalData:true,consentVersion:'2026-11-19-v1'}:body)}));
+ await call('sign-up/email',{email:'reset@example.com',name:'Test',password:'abcdefgh'});
+ const reset=email=>call('request-password-reset',{email,redirectTo:'http://localhost:4173/?auth=reset'});
+ const results=await Promise.all([reset('reset@example.com'),reset('RESET@example.com'),reset('reset@example.com')]);
+ for(const r of results)assert.equal(r.status,200);
+ assert.equal(letters.length,1);
+ assert.equal(id.database.prepare("SELECT count(*) n FROM verification WHERE identifier LIKE 'reset-password:%'").get().n,1);
+ id.database.prepare('UPDATE reset_cooldown SET next_at=0').run();
+ assert.equal((await reset('reset@example.com')).status,200);assert.equal(letters.length,2);
+ assert.deepEqual(await (await reset('nobody@example.com')).json(),await results[0].json());
+});

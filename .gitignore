@@ -44,3 +44,20 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db 
+# Public web source; never commit runtime data or secrets.
+node_modules/
+.env.*
+!.env.example
+*.pem
+*.key
+*.sqlite*
+*.tar.gz
+project-context.json
+!/web/dist/
+!/web/dist/**
+/web/data/
+/web/docs/**/*.docx
+/web/docs/**/*.png
+/web/deploy/child-test-results/
+
+node_modules

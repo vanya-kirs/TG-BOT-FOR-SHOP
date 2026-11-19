@@ -1,0 +1,12 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {seed,addToCart,cartTotal,checkout,finishOrder,summary,payout,readState} from '../dist/store.js';
+test('cart limits apply across sizes',()=>{const s=seed();addToCart(s,'p1','S',3);addToCart(s,'p1','M');assert.throws(()=>addToCart(s,'p1','L'));assert.equal(cartTotal(s),2990000*4);});
+test('checkout snapshots prices and does not reserve stock',()=>{const s=seed();addToCart(s,'p1','S');const o=checkout(s);s.products[0].price=1;assert.equal(o.total,2990000);assert.equal(o.items[0].price,2990000);assert.equal(s.products[0].stock,4);assert.equal(s.cart.length,0);});
+test('sale records 15 percent and cannot be confirmed twice',()=>{const s=seed();addToCart(s,'p1','S');const o=checkout(s);finishOrder(s,o.id,true);assert.equal(s.products[0].stock,3);assert.equal(summary(s,'s1').commission,448500);assert.equal(summary(s,'s1').due,2541500);assert.throws(()=>finishOrder(s,o.id,true));});
+test('insufficient combined stock cannot partially mutate order',()=>{const s=seed();addToCart(s,'p1','S',2);addToCart(s,'p1','M',2);const o=checkout(s);s.products[0].stock=3;assert.throws(()=>finishOrder(s,o.id,true));assert.equal(s.products[0].stock,3);assert.equal(o.status,'pending');});
+test('cancelled orders do not accrue money',()=>{const s=seed();addToCart(s,'p1','S');const o=checkout(s);finishOrder(s,o.id,false);assert.equal(summary(s).due,0);assert.equal(s.products[0].stock,4);});
+test('supplier payments are scoped and bounded',()=>{const s=seed();addToCart(s,'p1','S');finishOrder(s,checkout(s).id,true);assert.throws(()=>payout(s,'s2',100));assert.throws(()=>payout(s,'s1',2541501));assert.throws(()=>payout(s,'s1',-100));payout(s,'s1',10000);assert.equal(summary(s,'s1').balance,2531500);});
+test('empty checkout and corrupt storage handled',()=>{assert.throws(()=>checkout(seed()));assert.equal(readState({getItem:()=>'{broken'}).version,1);});
+test('size removed after adding to cart blocks checkout',()=>{const s=seed();addToCart(s,'p1','S');s.products[0].sizes=['M'];assert.throws(()=>checkout(s));assert.equal(s.orders.length,0);assert.equal(s.cart.length,1);});
+test('quantity can decrease when stock was reduced',()=>{const s=seed();addToCart(s,'p1','S',4);s.products[0].stock=1;addToCart(s,'p1','S',-1);assert.equal(s.cart[0].quantity,3);});
